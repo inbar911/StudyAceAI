@@ -5,4 +5,11 @@
 @layer base {
   html { -webkit-tap-highlight-color: transparent; }
   body { @apply antialiased; }
+  .safe-area-b { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+@layer utilities {
+  .surface { @apply bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700; }
+  .surface-strong { @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700; }
+  .input-base { @apply bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-50; }
 }

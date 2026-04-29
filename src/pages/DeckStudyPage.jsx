@@ -5,11 +5,12 @@ import { useApp } from '../context/AppContext.jsx';
 import { useT } from '../hooks/useT.js';
 import { useSpacedRepetition } from '../hooks/useSpacedRepetition.js';
 import { QUALITY } from '../utils/sm2.js';
+import { speak, ttsAvailable } from '../utils/tts.js';
 import Button from '../components/Button.jsx';
 
 function ProgressBar({ value }) {
   return (
-    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+    <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
       <motion.div
         animate={{ width: `${value * 100}%` }}
         transition={{ duration: 0.4 }}
@@ -19,7 +20,7 @@ function ProgressBar({ value }) {
   );
 }
 
-function EditCardModal({ card, onSave, onClose }) {
+function EditCardModal({ card, onSave, onClose, onDelete }) {
   const [front, setFront] = useState(card.front);
   const [back, setBack] = useState(card.back);
   return (
@@ -27,22 +28,24 @@ function EditCardModal({ card, onSave, onClose }) {
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 w-full max-w-md"
       >
         <h2 className="font-bold text-lg mb-4">Edit card</h2>
         <label className="text-xs uppercase tracking-widest text-slate-500 mb-1.5 block">Front</label>
         <textarea
           rows={2} value={front} onChange={e => setFront(e.target.value)}
-          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-brand-500 mb-3"
+          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-brand-500 mb-3"
         />
         <label className="text-xs uppercase tracking-widest text-slate-500 mb-1.5 block">Back</label>
         <textarea
           rows={3} value={back} onChange={e => setBack(e.target.value)}
-          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-brand-500 mb-5"
+          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-brand-500 mb-5"
         />
-        <div className="flex gap-3">
-          <Button variant="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1" onClick={() => onSave(front.trim(), back.trim())}>Save</Button>
+        <div className="flex gap-2">
+          <Button variant="danger" onClick={onDelete}>Delete</Button>
+          <div className="flex-1" />
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => onSave(front.trim(), back.trim())}>Save</Button>
         </div>
       </motion.div>
     </div>
@@ -51,7 +54,7 @@ function EditCardModal({ card, onSave, onClose }) {
 
 export default function DeckStudyPage() {
   const { id } = useParams();
-  const { state, reviewCard, editCard: saveCardEdit } = useApp();
+  const { state, reviewCard, editCard: saveCardEdit, deleteCard } = useApp();
   const t = useT();
   const navigate = useNavigate();
 
@@ -63,8 +66,9 @@ export default function DeckStudyPage() {
   const [done, setDone] = useState(false);
   const [xpEarned, setXpEarned] = useState(0);
   const [editCard, setEditCard] = useState(null);
+  const [reverse, setReverse] = useState(false);
 
-  if (!deck) return <div className="text-center pt-20 text-slate-400">Deck not found.</div>;
+  if (!deck) return <div className="text-center pt-20 text-slate-500">Deck not found.</div>;
 
   function handleQuality(q) {
     const card = dueCards[idx];
@@ -84,15 +88,18 @@ export default function DeckStudyPage() {
       >
         <div className="text-6xl mb-4">🎉</div>
         <h2 className="text-2xl font-bold mb-2">{t('deck.finished')}</h2>
-        <p className="text-slate-400 mb-4">{t('deck.finishedSub')}</p>
-        {xpEarned > 0 && <p className="text-brand-400 font-bold mb-6">+{xpEarned} {t('deck.xpEarned')}</p>}
-        <div className="text-sm text-slate-400 mb-8">{mastered}/{total} mastered</div>
+        <p className="text-slate-500 mb-4">{t('deck.finishedSub')}</p>
+        {xpEarned > 0 && <p className="text-brand-500 font-bold mb-6">+{xpEarned} {t('deck.xpEarned')}</p>}
+        <div className="text-sm text-slate-500 mb-8">{mastered}/{total} mastered</div>
         <Button className="w-full" onClick={() => navigate('/')}>{t('nav.home')}</Button>
       </motion.div>
     );
   }
 
   const card = dueCards[idx];
+  const front = reverse ? card.back : card.front;
+  const back = reverse ? card.front : card.back;
+  const showText = flipped ? back : front;
 
   return (
     <motion.div
@@ -103,22 +110,28 @@ export default function DeckStudyPage() {
       {editCard && (
         <EditCardModal
           card={editCard}
-          onSave={(front, back) => {
-            saveCardEdit(id, editCard.id, front, back);
-            setEditCard(null);
+          onSave={(f, b) => { saveCardEdit(id, editCard.id, f, b); setEditCard(null); }}
+          onDelete={() => {
+            if (window.confirm('Delete this card?')) { deleteCard(id, editCard.id); setEditCard(null); }
           }}
           onClose={() => setEditCard(null)}
         />
       )}
 
       <div className="flex items-center gap-3 mb-4">
-        <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-200">‹ {t('deck.back')}</button>
+        <button onClick={() => navigate(-1)} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">‹ {t('deck.back')}</button>
         <div className="flex-1"><ProgressBar value={progress} /></div>
-        <span className="text-xs text-slate-400">{mastered}/{total}</span>
+        <span className="text-xs text-slate-500">{mastered}/{total}</span>
       </div>
 
-      <div className="text-center mb-2">
+      <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-slate-500">{idx + 1} / {dueCards.length}</span>
+        <button
+          onClick={() => setReverse(r => !r)}
+          className="text-xs px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700"
+        >
+          {reverse ? '⇆ B → F' : '⇆ F → B'}
+        </button>
       </div>
 
       <AnimatePresence mode="wait">
@@ -129,19 +142,26 @@ export default function DeckStudyPage() {
           exit={{ rotateY: -90, opacity: 0 }}
           transition={{ duration: 0.22 }}
           onClick={() => setFlipped(f => !f)}
-          className="relative bg-slate-800/70 border border-slate-700 rounded-3xl p-8 min-h-[240px] flex flex-col items-center justify-center cursor-pointer select-none mb-4 hover:bg-slate-800 transition-colors"
+          className="relative bg-slate-100 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-3xl p-8 min-h-[240px] flex flex-col items-center justify-center cursor-pointer select-none mb-4 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors"
         >
-          <div className={`absolute top-3 right-3 text-xs px-2 py-0.5 rounded-full ${flipped ? 'bg-brand-500/20 text-brand-400' : 'bg-slate-700 text-slate-400'}`}>
+          <div className={`absolute top-3 right-3 text-xs px-2 py-0.5 rounded-full ${flipped ? 'bg-brand-500/20 text-brand-500' : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
             {flipped ? 'Answer' : 'Question'}
           </div>
-          <p className="text-xl font-semibold text-center leading-relaxed">
-            {flipped ? card.back : card.front}
-          </p>
+          <p className="text-xl font-semibold text-center leading-relaxed">{showText}</p>
           {!flipped && <p className="text-xs text-slate-500 mt-6">{t('deck.flip')}</p>}
-          <button
-            onClick={e => { e.stopPropagation(); setEditCard(card); }}
-            className="absolute bottom-3 right-3 text-slate-600 hover:text-slate-400 text-xs"
-          >✏️</button>
+          <div className="absolute bottom-3 right-3 flex gap-2">
+            {ttsAvailable && (
+              <button
+                onClick={e => { e.stopPropagation(); speak(showText, state.lang); }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-base"
+                title="Speak"
+              >🔊</button>
+            )}
+            <button
+              onClick={e => { e.stopPropagation(); setEditCard(card); }}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+            >✏️</button>
+          </div>
         </motion.div>
       </AnimatePresence>
 

@@ -45,6 +45,25 @@ export async function generateFlashcards({ topic, count = 10, lang = 'en' }) {
   return arr.filter(c => c?.front && c?.back).map(c => ({ front: String(c.front), back: String(c.back) }));
 }
 
+export async function generateFlashcardsFromImage({ base64, mediaType = 'image/jpeg', count = 10, lang = 'en' }) {
+  const system = `You are an expert tutor creating flashcards from textbook/notes photographs. Read the text in the image and produce flashcards. Output STRICT JSON only — an array of objects with shape {"front": string, "back": string}. No prose, no markdown. Write all content in ${langName[lang] || 'English'}. Make cards concise, factual, and varied.`;
+  const resp = await call({
+    system,
+    max_tokens: 2500,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+        { type: 'text', text: `Extract key concepts from this image and produce exactly ${count} flashcards as a JSON array.` }
+      ]
+    }]
+  });
+  const text = extractText(resp);
+  const arr = extractJSON(text);
+  if (!Array.isArray(arr)) throw new Error('Bad response shape');
+  return arr.filter(c => c?.front && c?.back).map(c => ({ front: String(c.front), back: String(c.back) }));
+}
+
 export async function generateExam({ deck, lang = 'en', count = 5 }) {
   const sample = deck.cards.slice(0, 30).map(c => `Q: ${c.front}\nA: ${c.back}`).join('\n\n');
   const system = `You write fair, varied exam questions for students. Output STRICT JSON only — an array of objects with shape:

@@ -4,6 +4,7 @@ import { useT } from '../hooks/useT.js';
 import { useApp } from '../context/AppContext.jsx';
 import { useAI } from '../hooks/useAI.js';
 import { solveMathFromImage } from '../api/claude.js';
+import { compressImage } from '../utils/image.js';
 import Button from '../components/Button.jsx';
 
 export default function MathPage() {
@@ -16,17 +17,13 @@ export default function MathPage() {
 
   const solver = useAI(useCallback(solveMathFromImage, []));
 
-  function handleFile(file) {
+  async function handleFile(file) {
     if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-      const dataUrl = e.target.result;
-      const base64 = dataUrl.split(',')[1];
-      setPreview(dataUrl);
-      setImageData({ base64, mediaType: file.type });
-      setResult(null);
-    };
-    reader.readAsDataURL(file);
+    const compressed = await compressImage(file, 1024, 0.85);
+    if (!compressed) return;
+    setPreview(compressed.dataUrl);
+    setImageData({ base64: compressed.base64, mediaType: compressed.mediaType });
+    setResult(null);
   }
 
   function handleDrop(e) {

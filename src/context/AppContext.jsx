@@ -18,7 +18,6 @@ const initial = {
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'hydrate': return { ...state, ...action.payload };
     case 'setLang': return { ...state, lang: action.lang };
     case 'setTheme': return { ...state, theme: action.theme };
     case 'finishOnboarding': return { ...state, onboarded: true };
@@ -31,6 +30,16 @@ function reducer(state, action) {
         decks: state.decks.map(d => d.id !== deckId ? d : {
           ...d,
           cards: d.cards.map(c => c.id === cardId ? { ...c, front, back } : c)
+        })
+      };
+    }
+    case 'deleteCard': {
+      const { deckId, cardId } = action;
+      return {
+        ...state,
+        decks: state.decks.map(d => d.id !== deckId ? d : {
+          ...d,
+          cards: d.cards.filter(c => c.id !== cardId)
         })
       };
     }
@@ -48,6 +57,26 @@ function reducer(state, action) {
       return { ...state, decks, xp: state.xp + xpForReview(quality), streak: bumpStreak(state.streak) };
     }
     case 'examAwardXP': return { ...state, xp: state.xp + action.amount, streak: bumpStreak(state.streak) };
+    case 'importBackup': {
+      const { data, mode } = action;
+      const incoming = (data.decks || []).map(d => ({
+        ...d,
+        id: d.id || uid(),
+        cards: (d.cards || []).map(c => ({
+          id: c.id || uid(),
+          front: c.front,
+          back: c.back,
+          sr: c.sr || defaultCardSR(),
+          lastReview: c.lastReview || null
+        }))
+      }));
+      if (mode === 'replace') {
+        return { ...state, decks: incoming, xp: data.xp ?? state.xp, streak: data.streak ?? state.streak };
+      }
+      const existingIds = new Set(state.decks.map(d => d.id));
+      const merged = [...incoming.filter(d => !existingIds.has(d.id)), ...state.decks];
+      return { ...state, decks: merged };
+    }
     case 'reset': return { ...initial, lang: state.lang, theme: state.theme, onboarded: true };
     default: return state;
   }
@@ -61,15 +90,18 @@ function bumpStreak(s) {
   return { count, lastDay: today };
 }
 
+function lazyInit() {
+  const s = loadState();
+  return s ? { ...initial, ...s } : initial;
+}
+
 export function AppProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initial);
+  const [state, dispatch] = useReducer(reducer, undefined, lazyInit);
 
   useEffect(() => {
-    const s = loadState();
-    if (s) dispatch({ type: 'hydrate', payload: s });
-  }, []);
-
-  useEffect(() => { saveState(state); }, [state]);
+    const id = setTimeout(() => saveState(state), 250);
+    return () => clearTimeout(id);
+  }, [state]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -96,8 +128,10 @@ export function AppProvider({ children }) {
     },
     deleteDeck: (id) => dispatch({ type: 'deleteDeck', id }),
     editCard: (deckId, cardId, front, back) => dispatch({ type: 'editCard', deckId, cardId, front, back }),
+    deleteCard: (deckId, cardId) => dispatch({ type: 'deleteCard', deckId, cardId }),
     reviewCard: (deckId, cardId, quality) => dispatch({ type: 'reviewCard', deckId, cardId, quality }),
     awardExamXP: (amount) => dispatch({ type: 'examAwardXP', amount }),
+    importBackup: (data, mode = 'merge') => dispatch({ type: 'importBackup', data, mode }),
     resetAll: () => { clearState(); dispatch({ type: 'reset' }); }
   }), [state]);
 
