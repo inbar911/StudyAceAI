@@ -7,48 +7,38 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-6';
+const MODEL = 'gemini-1.5-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+
+function toGeminiBody({ system, messages = [], max_tokens = 2048 }) {
+  const contents = messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: Array.isArray(m.content)
+      ? m.content.map(p =>
+          p.type === 'image'
+            ? { inline_data: { mime_type: p.source.media_type, data: p.source.data } }
+            : { text: p.text }
+        )
+      : [{ text: m.content }]
+  }));
+  const body = { contents, generationConfig: { maxOutputTokens: max_tokens } };
+  if (system) body.system_instruction = { parts: [{ text: system }] };
+  return body;
+}
 
 app.post('/api/claude', async (req, res) => {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return res.status(500).json({ error: 'Missing ANTHROPIC_API_KEY' });
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
   try {
-    const r = await fetch(ANTHROPIC_URL, {
+    const r = await fetch(`${GEMINI_URL}?key=${key}`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({ model: MODEL, max_tokens: 2048, ...req.body })
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(toGeminiBody(req.body))
     });
     const data = await r.json();
-    if (!r.ok) return res.status(r.status).json(data);
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/claude/stream', async (req, res) => {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return res.status(500).json({ error: 'Missing ANTHROPIC_API_KEY' });
-  try {
-    const r = await fetch(ANTHROPIC_URL, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({ model: MODEL, max_tokens: 2048, stream: true, ...req.body })
-    });
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    for await (const chunk of r.body) res.write(chunk);
-    res.end();
+    if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Gemini error' });
+    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
+    res.json({ content: [{ type: 'text', text }] });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
